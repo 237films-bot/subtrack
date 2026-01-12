@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { AISubscription } from '@/lib/types';
-import { supabase } from '@/lib/supabase';
 import {
   getSubscriptions,
   addSubscription,
@@ -44,7 +43,6 @@ type ViewMode = 'grid' | 'list';
 export default function Home() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
   const [subscriptions, setSubscriptions] = useState<AISubscription[]>([]);
   const [filteredSubscriptions, setFilteredSubscriptions] = useState<AISubscription[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -58,33 +56,20 @@ export default function Home() {
   const [updateCreditsOpen, setUpdateCreditsOpen] = useState(false);
   const [selectedSubscription, setSelectedSubscription] = useState<AISubscription | null>(null);
 
-  // Check authentication
+  // Check authentication (simple password-based)
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+    const checkAuth = () => {
+      const isLoggedIn = localStorage.getItem('app_authenticated') === 'true';
 
-      if (!session) {
-        router.push('/auth');
+      if (!isLoggedIn) {
+        router.push('/login');
         return;
       }
 
-      setUser(session.user);
       loadSubscriptions();
     };
 
     checkAuth();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        router.push('/auth');
-      } else {
-        setUser(session.user);
-        loadSubscriptions();
-      }
-    });
-
-    return () => subscription.unsubscribe();
   }, [router]);
 
   // Load subscriptions
@@ -148,10 +133,10 @@ export default function Home() {
   };
 
   // Logout
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    localStorage.removeItem('app_authenticated');
     toast.success('Déconnexion réussie');
-    router.push('/auth');
+    router.push('/login');
   };
 
   // Handlers
@@ -222,7 +207,7 @@ export default function Home() {
               <div>
                 <h1 className="text-xl font-bold">AI Credits Tracker</h1>
                 <p className="text-xs text-muted-foreground">
-                  {user?.email || 'Gérez vos crédits IA'}
+                  Gérez vos crédits IA
                 </p>
               </div>
             </div>

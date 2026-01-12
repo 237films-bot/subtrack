@@ -15,9 +15,7 @@ function handleDatabaseError<T>(error: unknown, fallbackValue: T): T {
   const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
   // Show user-friendly error message
-  if (errorMessage.includes('JWT') || errorMessage.includes('auth')) {
-    toast.error('Session expirée. Veuillez vous reconnecter.');
-  } else if (errorMessage.includes('network')) {
+  if (errorMessage.includes('network')) {
     toast.error('Erreur réseau. Vérifiez votre connexion.');
   } else {
     toast.error('Erreur lors de la sauvegarde des données.');
@@ -49,12 +47,11 @@ function dbToSubscription(row: any): AISubscription {
 }
 
 /**
- * Convert AISubscription to database format
+ * Convert AISubscription to database format (without user_id)
  */
-function subscriptionToDb(subscription: AISubscription, userId: string) {
+function subscriptionToDb(subscription: AISubscription) {
   return {
     id: subscription.id,
-    user_id: userId,
     name: subscription.name,
     logo: subscription.logo,
     color: subscription.color,
@@ -71,16 +68,9 @@ function subscriptionToDb(subscription: AISubscription, userId: string) {
 
 export async function getSubscriptions(): Promise<AISubscription[]> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return [];
-    }
-
     const { data, error } = await supabase
       .from('subscriptions')
       .select('*')
-      .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -93,14 +83,7 @@ export async function getSubscriptions(): Promise<AISubscription[]> {
 
 export async function addSubscription(subscription: AISubscription): Promise<AISubscription[]> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      toast.error('Vous devez être connecté');
-      return [];
-    }
-
-    const dbSubscription = subscriptionToDb(subscription, user.id);
+    const dbSubscription = subscriptionToDb(subscription);
 
     const { error } = await supabase
       .from('subscriptions')
@@ -120,13 +103,6 @@ export async function updateSubscription(
   updates: Partial<AISubscription>
 ): Promise<AISubscription[]> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      toast.error('Vous devez être connecté');
-      return [];
-    }
-
     // Convert camelCase to snake_case for database
     const dbUpdates: any = {};
     if (updates.name !== undefined) dbUpdates.name = updates.name;
@@ -144,8 +120,7 @@ export async function updateSubscription(
     const { error } = await supabase
       .from('subscriptions')
       .update(dbUpdates)
-      .eq('id', id)
-      .eq('user_id', user.id);
+      .eq('id', id);
 
     if (error) throw error;
 
@@ -157,19 +132,11 @@ export async function updateSubscription(
 
 export async function deleteSubscription(id: string): Promise<AISubscription[]> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      toast.error('Vous devez être connecté');
-      return [];
-    }
-
     // Delete subscription (history will be deleted automatically via CASCADE)
     const { error } = await supabase
       .from('subscriptions')
       .delete()
-      .eq('id', id)
-      .eq('user_id', user.id);
+      .eq('id', id);
 
     if (error) throw error;
 
@@ -186,22 +153,14 @@ export async function updateCredits(
   note?: string
 ): Promise<AISubscription[]> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      toast.error('Vous devez être connecté');
-      return [];
-    }
-
     // Get current subscription to create history
     const subscriptions = await getSubscriptions();
     const subscription = subscriptions.find(s => s.id === id);
 
     if (subscription) {
-      // Create history entry
+      // Create history entry (without user_id)
       const historyEntry = {
         id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
-        user_id: user.id,
         subscription_id: id,
         previous_used: subscription.usedCredits,
         new_used: usedCredits,
@@ -227,16 +186,9 @@ export async function updateCredits(
 // History functions
 export async function getHistory(): Promise<CreditHistory[]> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return [];
-    }
-
     const { data, error } = await supabase
       .from('credit_history')
       .select('*')
-      .eq('user_id', user.id)
       .order('date', { ascending: false });
 
     if (error) throw error;
@@ -257,16 +209,9 @@ export async function getHistory(): Promise<CreditHistory[]> {
 
 export async function getSubscriptionHistory(subscriptionId: string): Promise<CreditHistory[]> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return [];
-    }
-
     const { data, error } = await supabase
       .from('credit_history')
       .select('*')
-      .eq('user_id', user.id)
       .eq('subscription_id', subscriptionId)
       .order('date', { ascending: false });
 
