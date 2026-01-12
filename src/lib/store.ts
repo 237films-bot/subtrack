@@ -1,99 +1,176 @@
 'use client';
 
 import { AISubscription, CreditHistory } from './types';
+import toast from 'react-hot-toast';
 
 const STORAGE_KEY = 'ai-credits-subscriptions';
 const HISTORY_KEY = 'ai-credits-history';
 
+/**
+ * Handle localStorage errors gracefully
+ * @param error - The error that occurred
+ * @param fallbackValue - The value to return if storage fails
+ */
+function handleStorageError<T>(error: unknown, fallbackValue: T): T {
+  console.error('Storage error:', error);
+
+  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+  // Show user-friendly error message
+  if (errorMessage.includes('quota') || errorMessage.includes('QuotaExceededError')) {
+    toast.error('Stockage plein. Veuillez libérer de l\'espace.');
+  } else if (errorMessage.includes('SecurityError')) {
+    toast.error('Accès au stockage bloqué. Vérifiez vos paramètres.');
+  } else {
+    toast.error('Erreur lors de la sauvegarde des données.');
+  }
+
+  return fallbackValue;
+}
+
 export function getSubscriptions(): AISubscription[] {
   if (typeof window === 'undefined') return [];
-  const data = localStorage.getItem(STORAGE_KEY);
-  return data ? JSON.parse(data) : [];
+
+  try {
+    const data = localStorage.getItem(STORAGE_KEY);
+    if (!data) return [];
+
+    const parsed = JSON.parse(data);
+    // Validate that it's an array
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return handleStorageError(error, []);
+  }
 }
 
 export function saveSubscriptions(subscriptions: AISubscription[]): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(subscriptions));
+
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(subscriptions));
+  } catch (error) {
+    handleStorageError(error, undefined);
+  }
 }
 
 export function addSubscription(subscription: AISubscription): AISubscription[] {
-  const subscriptions = getSubscriptions();
-  subscriptions.push(subscription);
-  saveSubscriptions(subscriptions);
-  return subscriptions;
+  try {
+    const subscriptions = getSubscriptions();
+    subscriptions.push(subscription);
+    saveSubscriptions(subscriptions);
+    return subscriptions;
+  } catch (error) {
+    return handleStorageError(error, getSubscriptions());
+  }
 }
 
 export function updateSubscription(id: string, updates: Partial<AISubscription>): AISubscription[] {
-  const subscriptions = getSubscriptions();
-  const index = subscriptions.findIndex(s => s.id === id);
-  if (index !== -1) {
-    subscriptions[index] = {
-      ...subscriptions[index],
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    };
-    saveSubscriptions(subscriptions);
+  try {
+    const subscriptions = getSubscriptions();
+    const index = subscriptions.findIndex(s => s.id === id);
+
+    if (index !== -1) {
+      subscriptions[index] = {
+        ...subscriptions[index],
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      };
+      saveSubscriptions(subscriptions);
+    }
+
+    return subscriptions;
+  } catch (error) {
+    return handleStorageError(error, getSubscriptions());
   }
-  return subscriptions;
 }
 
 export function deleteSubscription(id: string): AISubscription[] {
-  let subscriptions = getSubscriptions();
-  subscriptions = subscriptions.filter(s => s.id !== id);
-  saveSubscriptions(subscriptions);
-  
-  // Also delete related history
-  let history = getHistory();
-  history = history.filter(h => h.subscriptionId !== id);
-  saveHistory(history);
-  
-  return subscriptions;
+  try {
+    let subscriptions = getSubscriptions();
+    subscriptions = subscriptions.filter(s => s.id !== id);
+    saveSubscriptions(subscriptions);
+
+    // Also delete related history
+    let history = getHistory();
+    history = history.filter(h => h.subscriptionId !== id);
+    saveHistory(history);
+
+    return subscriptions;
+  } catch (error) {
+    return handleStorageError(error, getSubscriptions());
+  }
 }
 
 export function updateCredits(id: string, usedCredits: number, note?: string): AISubscription[] {
-  const subscriptions = getSubscriptions();
-  const subscription = subscriptions.find(s => s.id === id);
-  
-  if (subscription) {
-    // Record history
-    const historyEntry: CreditHistory = {
-      id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
-      subscriptionId: id,
-      previousUsed: subscription.usedCredits,
-      newUsed: usedCredits,
-      change: usedCredits - subscription.usedCredits,
-      date: new Date().toISOString(),
-      note,
-    };
-    addHistory(historyEntry);
-    
-    // Update subscription
-    return updateSubscription(id, { usedCredits });
+  try {
+    const subscriptions = getSubscriptions();
+    const subscription = subscriptions.find(s => s.id === id);
+
+    if (subscription) {
+      // Record history
+      const historyEntry: CreditHistory = {
+        id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
+        subscriptionId: id,
+        previousUsed: subscription.usedCredits,
+        newUsed: usedCredits,
+        change: usedCredits - subscription.usedCredits,
+        date: new Date().toISOString(),
+        note,
+      };
+      addHistory(historyEntry);
+
+      // Update subscription
+      return updateSubscription(id, { usedCredits });
+    }
+
+    return subscriptions;
+  } catch (error) {
+    return handleStorageError(error, getSubscriptions());
   }
-  
-  return subscriptions;
 }
 
 // History functions
 export function getHistory(): CreditHistory[] {
   if (typeof window === 'undefined') return [];
-  const data = localStorage.getItem(HISTORY_KEY);
-  return data ? JSON.parse(data) : [];
+
+  try {
+    const data = localStorage.getItem(HISTORY_KEY);
+    if (!data) return [];
+
+    const parsed = JSON.parse(data);
+    // Validate that it's an array
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return handleStorageError(error, []);
+  }
 }
 
 export function saveHistory(history: CreditHistory[]): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  } catch (error) {
+    handleStorageError(error, undefined);
+  }
 }
 
 export function addHistory(entry: CreditHistory): void {
-  const history = getHistory();
-  history.push(entry);
-  saveHistory(history);
+  try {
+    const history = getHistory();
+    history.push(entry);
+    saveHistory(history);
+  } catch (error) {
+    handleStorageError(error, undefined);
+  }
 }
 
 export function getSubscriptionHistory(subscriptionId: string): CreditHistory[] {
-  return getHistory().filter(h => h.subscriptionId === subscriptionId);
+  try {
+    return getHistory().filter(h => h.subscriptionId === subscriptionId);
+  } catch (error) {
+    return handleStorageError(error, []);
+  }
 }
 
 // Reset logic

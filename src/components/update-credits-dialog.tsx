@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { AISubscription } from '@/lib/types';
+import { sanitizeInput } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -54,7 +55,11 @@ export function UpdateCreditsDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdate(usedCredits, note || undefined);
+
+    // Sanitize note to prevent XSS attacks
+    const sanitizedNote = sanitizeInput(note);
+
+    onUpdate(usedCredits, sanitizedNote || undefined);
     onClose();
   };
 

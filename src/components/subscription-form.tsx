@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { AISubscription, AI_SERVICES_PRESETS } from '@/lib/types';
+import { sanitizeInput, sanitizeUrl } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -136,11 +137,17 @@ export function SubscriptionForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const now = new Date().toISOString();
+
+    // Sanitize all user inputs to prevent XSS attacks
+    const sanitizedName = sanitizeInput(formData.name);
+    const sanitizedUrl = sanitizeUrl(formData.url);
+    const sanitizedNotes = sanitizeInput(formData.notes);
+
     const newSubscription: AISubscription = {
       id: subscription?.id || crypto.randomUUID?.() || Date.now().toString(),
-      name: formData.name || 'Sans nom',
+      name: sanitizedName || 'Sans nom',
       logo: formData.logo,
       color: formData.color || '#6366f1',
       totalCredits: formData.totalCredits || 100,
@@ -148,13 +155,13 @@ export function SubscriptionForm({
       resetDay: formData.resetDay || 1,
       resetType: formData.resetType || 'monthly',
       customResetDays: formData.customResetDays,
-      url: formData.url,
-      notes: formData.notes,
+      url: sanitizedUrl,
+      notes: sanitizedNotes,
       enabled: formData.enabled ?? true,
       createdAt: subscription?.createdAt || now,
       updatedAt: now,
     };
-    
+
     onSave(newSubscription);
     onClose();
   };
