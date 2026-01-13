@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { AISubscription, AI_SERVICES_PRESETS } from '@/lib/types';
+import { Subscription, SUBSCRIPTION_PRESETS, SUBSCRIPTION_CATEGORIES, BILLING_CYCLES } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,70 +20,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import {
-  Sparkles,
-  Video,
-  MessageCircle,
-  Brain,
-  Image,
-  Palette,
-  Clapperboard,
-  Mic,
-  Search,
-  Film,
-  Music,
-  Headphones,
-  Zap,
-} from 'lucide-react';
-
-const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  sparkles: Sparkles,
-  video: Video,
-  'message-circle': MessageCircle,
-  brain: Brain,
-  image: Image,
-  palette: Palette,
-  clapperboard: Clapperboard,
-  mic: Mic,
-  search: Search,
-  film: Film,
-  music: Music,
-  headphones: Headphones,
-};
-
-const iconOptions = [
-  { value: 'sparkles', label: 'Sparkles' },
-  { value: 'video', label: 'Video' },
-  { value: 'message-circle', label: 'Message' },
-  { value: 'brain', label: 'Brain' },
-  { value: 'image', label: 'Image' },
-  { value: 'palette', label: 'Palette' },
-  { value: 'clapperboard', label: 'Clapperboard' },
-  { value: 'mic', label: 'Microphone' },
-  { value: 'search', label: 'Search' },
-  { value: 'film', label: 'Film' },
-  { value: 'music', label: 'Music' },
-  { value: 'headphones', label: 'Headphones' },
-];
-
-const colorOptions = [
-  '#6366f1', // Indigo
-  '#ec4899', // Pink
-  '#10a37f', // Green (OpenAI)
-  '#d97706', // Amber
-  '#3b82f6', // Blue
-  '#8b5cf6', // Violet
-  '#ef4444', // Red
-  '#14b8a6', // Teal
-  '#f97316', // Orange
-  '#000000', // Black
-];
+import * as Icons from 'lucide-react';
 
 interface SubscriptionFormProps {
   open: boolean;
   onClose: () => void;
-  onSave: (subscription: AISubscription) => void;
-  subscription?: AISubscription | null;
+  onSave: (subscription: Subscription) => void;
+  subscription?: Subscription | null;
 }
 
 export function SubscriptionForm({
@@ -92,16 +35,16 @@ export function SubscriptionForm({
   onSave,
   subscription,
 }: SubscriptionFormProps) {
-  const [formData, setFormData] = useState<Partial<AISubscription>>({
+  const [formData, setFormData] = useState<Partial<Subscription>>({
     name: '',
-    logo: 'sparkles',
+    category: 'SaaS',
+    cost: 0,
+    currency: 'EUR',
+    billingCycle: 'monthly',
+    renewalDate: new Date().toISOString(),
+    autoRenew: true,
     color: '#6366f1',
-    totalCredits: 100,
-    usedCredits: 0,
-    resetDay: 1,
-    resetType: 'monthly',
-    url: '',
-    notes: '',
+    logo: 'package',
     enabled: true,
   });
 
@@ -111,78 +54,99 @@ export function SubscriptionForm({
     } else {
       setFormData({
         name: '',
-        logo: 'sparkles',
+        category: 'SaaS',
+        cost: 0,
+        currency: 'EUR',
+        billingCycle: 'monthly',
+        renewalDate: new Date().toISOString(),
+        autoRenew: true,
         color: '#6366f1',
-        totalCredits: 100,
-        usedCredits: 0,
-        resetDay: 1,
-        resetType: 'monthly',
-        url: '',
-        notes: '',
+        logo: 'package',
         enabled: true,
       });
     }
   }, [subscription, open]);
 
-  const handlePresetSelect = (preset: Partial<AISubscription>) => {
-    setFormData({
-      ...formData,
-      name: preset.name || '',
-      logo: preset.logo || 'sparkles',
-      color: preset.color || '#6366f1',
-      url: preset.url || '',
-    });
+  const handlePresetSelect = (presetName: string) => {
+    const preset = SUBSCRIPTION_PRESETS.find(p => p.name === presetName);
+    if (preset) {
+      setFormData({
+        ...formData,
+        ...preset,
+        renewalDate: formData.renewalDate,
+        cost: formData.cost,
+        currency: formData.currency,
+        enabled: formData.enabled,
+      });
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const now = new Date().toISOString();
-    const newSubscription: AISubscription = {
+    const newSubscription: Subscription = {
       id: subscription?.id || crypto.randomUUID?.() || Date.now().toString(),
       name: formData.name || 'Sans nom',
-      logo: formData.logo,
+      category: formData.category || 'SaaS',
+      cost: Number(formData.cost) || 0,
+      currency: formData.currency || 'EUR',
+      billingCycle: formData.billingCycle || 'monthly',
+      customCycleDays: formData.customCycleDays,
+      renewalDate: formData.renewalDate || new Date().toISOString(),
+      autoRenew: formData.autoRenew ?? true,
       color: formData.color || '#6366f1',
-      totalCredits: formData.totalCredits || 100,
-      usedCredits: formData.usedCredits || 0,
-      resetDay: formData.resetDay || 1,
-      resetType: formData.resetType || 'monthly',
-      customResetDays: formData.customResetDays,
+      logo: formData.logo,
       url: formData.url,
       notes: formData.notes,
       enabled: formData.enabled ?? true,
       createdAt: subscription?.createdAt || now,
       updatedAt: now,
     };
-    
+
     onSave(newSubscription);
     onClose();
   };
 
-  const IconComponent = formData.logo ? iconMap[formData.logo] : Zap;
+  const getIcon = (iconName?: string) => {
+    if (!iconName) return Icons.Package;
+    const iconKey = iconName
+      .split('-')
+      .map((part, i) => (i === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1)))
+      .join('');
+    const IconKey = iconKey.charAt(0).toUpperCase() + iconKey.slice(1);
+    return (Icons as any)[IconKey] || Icons.Package;
+  };
+
+  const IconComponent = getIcon(formData.logo);
+
+  const colorOptions = [
+    '#6366f1', '#ec4899', '#10a37f', '#d97706', '#3b82f6',
+    '#8b5cf6', '#ef4444', '#14b8a6', '#f97316', '#000000',
+  ];
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {subscription ? 'Modifier la subscription' : 'Ajouter une subscription'}
+            {subscription ? 'Modifier l\'abonnement' : 'Ajouter un abonnement'}
           </DialogTitle>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Presets */}
           {!subscription && (
             <div className="space-y-2">
               <Label>Services prédéfinis</Label>
               <div className="flex flex-wrap gap-2">
-                {AI_SERVICES_PRESETS.map((preset) => (
+                {SUBSCRIPTION_PRESETS.map((preset) => (
                   <Badge
                     key={preset.name}
                     variant="outline"
                     className="cursor-pointer hover:bg-accent"
                     style={{ borderColor: preset.color, color: preset.color }}
-                    onClick={() => handlePresetSelect(preset)}
+                    onClick={() => handlePresetSelect(preset.name!)}
                   >
                     {preset.name}
                   </Badge>
@@ -190,186 +154,167 @@ export function SubscriptionForm({
               </div>
             </div>
           )}
-          
+
           {/* Name & Icon preview */}
           <div className="flex items-center gap-4">
-            <div 
+            <div
               className="size-16 rounded-xl flex items-center justify-center shrink-0"
               style={{ backgroundColor: formData.color + '20' }}
             >
-              {IconComponent && (
-                <IconComponent 
-                  className="size-8" 
-                  style={{ color: formData.color }}
-                />
-              )}
+              <IconComponent
+                className="size-8"
+                style={{ color: formData.color }}
+              />
             </div>
             <div className="flex-1 space-y-2">
-              <Label htmlFor="name">Nom du service</Label>
+              <Label htmlFor="name">Nom de l'abonnement</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Ex: ChatGPT, Midjourney..."
+                placeholder="Ex: Microsoft 365, Slack..."
                 required
               />
             </div>
           </div>
-          
-          {/* Icon & Color */}
+
+          {/* Category & Billing Cycle */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Icône</Label>
+              <Label htmlFor="category">Catégorie</Label>
               <Select
-                value={formData.logo}
-                onValueChange={(value) => setFormData({ ...formData, logo: value })}
+                value={formData.category}
+                onValueChange={(value) => setFormData({ ...formData, category: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {iconOptions.map((icon) => {
-                    const Icon = iconMap[icon.value];
-                    return (
-                      <SelectItem key={icon.value} value={icon.value}>
-                        <div className="flex items-center gap-2">
-                          <Icon className="size-4" />
-                          {icon.label}
-                        </div>
-                      </SelectItem>
-                    );
-                  })}
+                  {SUBSCRIPTION_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="space-y-2">
-              <Label>Couleur</Label>
-              <div className="flex flex-wrap gap-2">
-                {colorOptions.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    className={`size-8 rounded-full border-2 transition-transform hover:scale-110 ${
-                      formData.color === color ? 'border-foreground scale-110' : 'border-transparent'
-                    }`}
-                    style={{ backgroundColor: color }}
-                    onClick={() => setFormData({ ...formData, color })}
-                  />
-                ))}
-              </div>
+              <Label htmlFor="billingCycle">Facturation</Label>
+              <Select
+                value={formData.billingCycle}
+                onValueChange={(value: any) => setFormData({ ...formData, billingCycle: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BILLING_CYCLES.map((cycle) => (
+                    <SelectItem key={cycle.value} value={cycle.value}>
+                      {cycle.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-          
-          {/* Credits */}
-          <div className="grid grid-cols-2 gap-4">
+
+          {/* Custom cycle days */}
+          {formData.billingCycle === 'custom' && (
             <div className="space-y-2">
-              <Label htmlFor="totalCredits">Crédits totaux</Label>
+              <Label htmlFor="customCycleDays">Nombre de jours du cycle</Label>
               <Input
-                id="totalCredits"
+                id="customCycleDays"
                 type="number"
                 min="1"
-                value={formData.totalCredits}
-                onChange={(e) => setFormData({ ...formData, totalCredits: parseInt(e.target.value) || 0 })}
+                value={formData.customCycleDays || ''}
+                onChange={(e) =>
+                  setFormData({ ...formData, customCycleDays: Number(e.target.value) })
+                }
+                placeholder="ex: 60"
+              />
+            </div>
+          )}
+
+          {/* Cost & Currency */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="cost">Coût par période</Label>
+              <Input
+                id="cost"
+                type="number"
+                step="0.01"
+                min="0"
+                value={formData.cost}
+                onChange={(e) => setFormData({ ...formData, cost: Number(e.target.value) })}
                 required
               />
             </div>
-            
+
             <div className="space-y-2">
-              <Label htmlFor="usedCredits">Crédits utilisés</Label>
-              <Input
-                id="usedCredits"
-                type="number"
-                min="0"
-                max={formData.totalCredits}
-                value={formData.usedCredits}
-                onChange={(e) => setFormData({ ...formData, usedCredits: parseInt(e.target.value) || 0 })}
-              />
-            </div>
-          </div>
-          
-          {/* Reset settings */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Type de reset</Label>
+              <Label htmlFor="currency">Devise</Label>
               <Select
-                value={formData.resetType}
-                onValueChange={(value: 'monthly' | 'weekly' | 'yearly' | 'custom') => 
-                  setFormData({ ...formData, resetType: value })
-                }
+                value={formData.currency}
+                onValueChange={(value) => setFormData({ ...formData, currency: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="monthly">Mensuel</SelectItem>
-                  <SelectItem value="weekly">Hebdomadaire</SelectItem>
-                  <SelectItem value="yearly">Annuel</SelectItem>
-                  <SelectItem value="custom">Personnalisé</SelectItem>
+                  <SelectItem value="EUR">EUR (€)</SelectItem>
+                  <SelectItem value="USD">USD ($)</SelectItem>
+                  <SelectItem value="GBP">GBP (£)</SelectItem>
+                  <SelectItem value="CAD">CAD ($)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            
-            <div className="space-y-2">
-              {formData.resetType === 'monthly' && (
-                <>
-                  <Label htmlFor="resetDay">Jour du mois</Label>
-                  <Select
-                    value={String(formData.resetDay)}
-                    onValueChange={(value) => setFormData({ ...formData, resetDay: parseInt(value) })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
-                        <SelectItem key={day} value={String(day)}>
-                          {day}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </>
-              )}
-              
-              {formData.resetType === 'weekly' && (
-                <>
-                  <Label>Jour de la semaine</Label>
-                  <Select
-                    value={String(formData.resetDay)}
-                    onValueChange={(value) => setFormData({ ...formData, resetDay: parseInt(value) })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">Lundi</SelectItem>
-                      <SelectItem value="2">Mardi</SelectItem>
-                      <SelectItem value="3">Mercredi</SelectItem>
-                      <SelectItem value="4">Jeudi</SelectItem>
-                      <SelectItem value="5">Vendredi</SelectItem>
-                      <SelectItem value="6">Samedi</SelectItem>
-                      <SelectItem value="0">Dimanche</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </>
-              )}
-              
-              {formData.resetType === 'custom' && (
-                <>
-                  <Label htmlFor="customDays">Tous les X jours</Label>
-                  <Input
-                    id="customDays"
-                    type="number"
-                    min="1"
-                    value={formData.customResetDays || 30}
-                    onChange={(e) => setFormData({ ...formData, customResetDays: parseInt(e.target.value) || 30 })}
-                  />
-                </>
-              )}
+          </div>
+
+          {/* Renewal Date */}
+          <div className="space-y-2">
+            <Label htmlFor="renewalDate">Prochaine date de renouvellement</Label>
+            <Input
+              id="renewalDate"
+              type="date"
+              value={
+                formData.renewalDate
+                  ? new Date(formData.renewalDate).toISOString().split('T')[0]
+                  : ''
+              }
+              onChange={(e) => setFormData({ ...formData, renewalDate: new Date(e.target.value).toISOString() })}
+              required
+            />
+          </div>
+
+          {/* Color */}
+          <div className="space-y-2">
+            <Label>Couleur</Label>
+            <div className="flex flex-wrap gap-2">
+              {colorOptions.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={`size-8 rounded-full border-2 transition-transform hover:scale-110 ${
+                    formData.color === color ? 'border-foreground scale-110' : 'border-transparent'
+                  }`}
+                  style={{ backgroundColor: color }}
+                  onClick={() => setFormData({ ...formData, color })}
+                />
+              ))}
             </div>
           </div>
-          
+
+          {/* Icon */}
+          <div className="space-y-2">
+            <Label htmlFor="logo">Icône (nom Lucide)</Label>
+            <Input
+              id="logo"
+              value={formData.logo}
+              onChange={(e) => setFormData({ ...formData, logo: e.target.value })}
+              placeholder="ex: package, cloud, github, etc."
+            />
+          </div>
+
           {/* URL */}
           <div className="space-y-2">
             <Label htmlFor="url">URL (optionnel)</Label>
@@ -381,7 +326,7 @@ export function SubscriptionForm({
               placeholder="https://..."
             />
           </div>
-          
+
           {/* Notes */}
           <div className="space-y-2">
             <Label htmlFor="notes">Notes (optionnel)</Label>
@@ -389,22 +334,34 @@ export function SubscriptionForm({
               id="notes"
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              placeholder="Notes sur cette subscription..."
+              placeholder="Informations supplémentaires..."
             />
           </div>
-          
-          {/* Enabled toggle */}
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="enabled"
-              checked={formData.enabled}
-              onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-              className="size-4"
-            />
-            <Label htmlFor="enabled">Subscription active</Label>
+
+          {/* Toggles */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="autoRenew"
+                checked={formData.autoRenew}
+                onChange={(e) => setFormData({ ...formData, autoRenew: e.target.checked })}
+                className="size-4"
+              />
+              <Label htmlFor="autoRenew">Renouvellement automatique</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="enabled"
+                checked={formData.enabled}
+                onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+                className="size-4"
+              />
+              <Label htmlFor="enabled">Abonnement actif</Label>
+            </div>
           </div>
-          
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Annuler

@@ -1,29 +1,29 @@
 'use client';
 
-import { AISubscription, CreditHistory } from './types';
+import { Subscription, RenewalHistory } from './types';
 
-const STORAGE_KEY = 'ai-credits-subscriptions';
-const HISTORY_KEY = 'ai-credits-history';
+const STORAGE_KEY = 'subscriptions';
+const HISTORY_KEY = 'renewal-history';
 
-export function getSubscriptions(): AISubscription[] {
+export function getSubscriptions(): Subscription[] {
   if (typeof window === 'undefined') return [];
   const data = localStorage.getItem(STORAGE_KEY);
   return data ? JSON.parse(data) : [];
 }
 
-export function saveSubscriptions(subscriptions: AISubscription[]): void {
+export function saveSubscriptions(subscriptions: Subscription[]): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(subscriptions));
 }
 
-export function addSubscription(subscription: AISubscription): AISubscription[] {
+export function addSubscription(subscription: Subscription): Subscription[] {
   const subscriptions = getSubscriptions();
   subscriptions.push(subscription);
   saveSubscriptions(subscriptions);
   return subscriptions;
 }
 
-export function updateSubscription(id: string, updates: Partial<AISubscription>): AISubscription[] {
+export function updateSubscription(id: string, updates: Partial<Subscription>): Subscription[] {
   const subscriptions = getSubscriptions();
   const index = subscriptions.findIndex(s => s.id === id);
   if (index !== -1) {
@@ -37,137 +37,157 @@ export function updateSubscription(id: string, updates: Partial<AISubscription>)
   return subscriptions;
 }
 
-export function deleteSubscription(id: string): AISubscription[] {
+export function deleteSubscription(id: string): Subscription[] {
   let subscriptions = getSubscriptions();
   subscriptions = subscriptions.filter(s => s.id !== id);
   saveSubscriptions(subscriptions);
-  
+
   // Also delete related history
   let history = getHistory();
   history = history.filter(h => h.subscriptionId !== id);
   saveHistory(history);
-  
+
   return subscriptions;
 }
 
-export function updateCredits(id: string, usedCredits: number, note?: string): AISubscription[] {
+// Renewal functions
+export function renewSubscription(id: string, note?: string): Subscription[] {
   const subscriptions = getSubscriptions();
   const subscription = subscriptions.find(s => s.id === id);
-  
+
   if (subscription) {
     // Record history
-    const historyEntry: CreditHistory = {
+    const historyEntry: RenewalHistory = {
       id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
       subscriptionId: id,
-      previousUsed: subscription.usedCredits,
-      newUsed: usedCredits,
-      change: usedCredits - subscription.usedCredits,
       date: new Date().toISOString(),
+      cost: subscription.cost,
+      currency: subscription.currency,
       note,
+      wasAutoRenewed: false,
     };
     addHistory(historyEntry);
-    
+
+    // Calculate next renewal date
+    const nextRenewalDate = calculateNextRenewalDate(subscription);
+
     // Update subscription
-    return updateSubscription(id, { usedCredits });
+    return updateSubscription(id, { renewalDate: nextRenewalDate.toISOString() });
   }
-  
+
   return subscriptions;
 }
 
 // History functions
-export function getHistory(): CreditHistory[] {
+export function getHistory(): RenewalHistory[] {
   if (typeof window === 'undefined') return [];
   const data = localStorage.getItem(HISTORY_KEY);
   return data ? JSON.parse(data) : [];
 }
 
-export function saveHistory(history: CreditHistory[]): void {
+export function saveHistory(history: RenewalHistory[]): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
 }
 
-export function addHistory(entry: CreditHistory): void {
+export function addHistory(entry: RenewalHistory): void {
   const history = getHistory();
   history.push(entry);
   saveHistory(history);
 }
 
-export function getSubscriptionHistory(subscriptionId: string): CreditHistory[] {
+export function getSubscriptionHistory(subscriptionId: string): RenewalHistory[] {
   return getHistory().filter(h => h.subscriptionId === subscriptionId);
 }
 
-// Reset logic
-export function getNextResetDate(subscription: AISubscription): Date {
-  const now = new Date();
-  const currentDay = now.getDate();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
-  
-  if (subscription.resetType === 'monthly') {
-    let resetDay = Math.min(subscription.resetDay, 28); // Handle months with fewer days
-    
-    if (currentDay < resetDay) {
-      // Reset is later this month
-      return new Date(currentYear, currentMonth, resetDay);
-    } else {
-      // Reset is next month
-      return new Date(currentYear, currentMonth + 1, resetDay);
-    }
+// Date calculation functions
+export function calculateNextRenewalDate(subscription: Subscription): Date {
+  const currentRenewal = new Date(subscription.renewalDate);
+
+  if (subscription.billingCycle === 'monthly') {
+    currentRenewal.setMonth(currentRenewal.getMonth() + 1);
+  } else if (subscription.billingCycle === 'quarterly') {
+    currentRenewal.setMonth(currentRenewal.getMonth() + 3);
+  } else if (subscription.billingCycle === 'yearly') {
+    currentRenewal.setFullYear(currentRenewal.getFullYear() + 1);
+  } else if (subscription.billingCycle === 'custom' && subscription.customCycleDays) {
+    currentRenewal.setDate(currentRenewal.getDate() + subscription.customCycleDays);
   }
-  
-  if (subscription.resetType === 'weekly') {
-    const dayOfWeek = now.getDay();
-    const targetDay = subscription.resetDay; // 0-6 (Sunday-Saturday)
-    let daysUntilReset = targetDay - dayOfWeek;
-    if (daysUntilReset <= 0) daysUntilReset += 7;
-    const nextReset = new Date(now);
-    nextReset.setDate(now.getDate() + daysUntilReset);
-    return nextReset;
-  }
-  
-  if (subscription.resetType === 'yearly') {
-    const resetMonth = Math.floor(subscription.resetDay / 100) - 1; // Month encoded as MMDD
-    const resetDayOfMonth = subscription.resetDay % 100;
-    let year = currentYear;
-    if (currentMonth > resetMonth || (currentMonth === resetMonth && currentDay >= resetDayOfMonth)) {
-      year++;
-    }
-    return new Date(year, resetMonth, resetDayOfMonth);
-  }
-  
-  if (subscription.resetType === 'custom' && subscription.customResetDays) {
-    // Calculate based on creation date
-    const created = new Date(subscription.createdAt);
-    const daysSinceCreation = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
-    const daysUntilReset = subscription.customResetDays - (daysSinceCreation % subscription.customResetDays);
-    const nextReset = new Date(now);
-    nextReset.setDate(now.getDate() + daysUntilReset);
-    return nextReset;
-  }
-  
-  // Default: next month same day
-  return new Date(currentYear, currentMonth + 1, subscription.resetDay);
+
+  return currentRenewal;
 }
 
-export function getDaysUntilReset(subscription: AISubscription): number {
-  const nextReset = getNextResetDate(subscription);
+export function getDaysUntilRenewal(subscription: Subscription): number {
+  const renewalDate = new Date(subscription.renewalDate);
   const now = new Date();
-  const diffTime = nextReset.getTime() - now.getTime();
+  const diffTime = renewalDate.getTime() - now.getTime();
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }
 
-export function getResetProgress(subscription: AISubscription): number {
-  // Progress of the billing cycle (0-100)
-  const now = new Date();
-  const nextReset = getNextResetDate(subscription);
-  
-  let cycleDays = 30; // Default monthly
-  if (subscription.resetType === 'weekly') cycleDays = 7;
-  if (subscription.resetType === 'yearly') cycleDays = 365;
-  if (subscription.resetType === 'custom') cycleDays = subscription.customResetDays || 30;
-  
-  const daysUntilReset = getDaysUntilReset(subscription);
-  const daysPassed = cycleDays - daysUntilReset;
-  
-  return Math.min(100, Math.max(0, (daysPassed / cycleDays) * 100));
+export function isRenewalSoon(subscription: Subscription, daysThreshold: number = 30): boolean {
+  const days = getDaysUntilRenewal(subscription);
+  return days >= 0 && days <= daysThreshold;
+}
+
+export function isOverdue(subscription: Subscription): boolean {
+  return getDaysUntilRenewal(subscription) < 0;
+}
+
+// Cost calculation functions
+export function getTotalMonthlyCost(subscriptions: Subscription[]): number {
+  return subscriptions
+    .filter(s => s.enabled)
+    .reduce((total, sub) => {
+      let monthlyCost = sub.cost;
+
+      // Convert to monthly equivalent
+      if (sub.billingCycle === 'yearly') {
+        monthlyCost = sub.cost / 12;
+      } else if (sub.billingCycle === 'quarterly') {
+        monthlyCost = sub.cost / 3;
+      } else if (sub.billingCycle === 'custom' && sub.customCycleDays) {
+        monthlyCost = (sub.cost / sub.customCycleDays) * 30;
+      }
+
+      return total + monthlyCost;
+    }, 0);
+}
+
+export function getTotalYearlyCost(subscriptions: Subscription[]): number {
+  return getTotalMonthlyCost(subscriptions) * 12;
+}
+
+export function getCostByCategory(subscriptions: Subscription[]): Record<string, number> {
+  const costs: Record<string, number> = {};
+
+  subscriptions
+    .filter(s => s.enabled)
+    .forEach(sub => {
+      if (!costs[sub.category]) {
+        costs[sub.category] = 0;
+      }
+
+      let monthlyCost = sub.cost;
+      if (sub.billingCycle === 'yearly') {
+        monthlyCost = sub.cost / 12;
+      } else if (sub.billingCycle === 'quarterly') {
+        monthlyCost = sub.cost / 3;
+      } else if (sub.billingCycle === 'custom' && sub.customCycleDays) {
+        monthlyCost = (sub.cost / sub.customCycleDays) * 30;
+      }
+
+      costs[sub.category] += monthlyCost;
+    });
+
+  return costs;
+}
+
+export function getUpcomingRenewals(subscriptions: Subscription[], days: number = 30): Subscription[] {
+  return subscriptions
+    .filter(s => s.enabled && isRenewalSoon(s, days))
+    .sort((a, b) => {
+      const daysA = getDaysUntilRenewal(a);
+      const daysB = getDaysUntilRenewal(b);
+      return daysA - daysB;
+    });
 }
