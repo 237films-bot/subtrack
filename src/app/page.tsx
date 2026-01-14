@@ -41,7 +41,11 @@ export default function Home() {
 
   // Load subscriptions
   useEffect(() => {
-    setSubscriptions(getSubscriptions());
+    const loadSubscriptions = async () => {
+      const subs = await getSubscriptions();
+      setSubscriptions(subs);
+    };
+    loadSubscriptions();
 
     // Check for dark mode preference
     if (typeof window !== 'undefined') {
@@ -82,27 +86,46 @@ export default function Home() {
     setFormOpen(true);
   };
 
-  const handleSaveSubscription = (subscription: Subscription) => {
-    if (editingSubscription) {
-      setSubscriptions(updateSubscription(subscription.id, subscription));
-    } else {
-      setSubscriptions(addSubscription(subscription));
+  const handleSaveSubscription = async (subscription: Subscription) => {
+    try {
+      if (editingSubscription) {
+        const updated = await updateSubscription(subscription.id, subscription);
+        setSubscriptions(updated);
+      } else {
+        const updated = await addSubscription(subscription);
+        setSubscriptions(updated);
+      }
+    } catch (error) {
+      console.error('Error saving subscription:', error);
+      alert('Erreur lors de la sauvegarde de l\'abonnement');
     }
   };
 
-  const handleDeleteSubscription = (id: string) => {
+  const handleDeleteSubscription = async (id: string) => {
     if (confirm('Êtes-vous sûr de vouloir supprimer cet abonnement ?')) {
-      setSubscriptions(deleteSubscription(id));
+      try {
+        const updated = await deleteSubscription(id);
+        setSubscriptions(updated);
+      } catch (error) {
+        console.error('Error deleting subscription:', error);
+        alert('Erreur lors de la suppression de l\'abonnement');
+      }
     }
   };
 
-  const handleRenewSubscription = (subscription: Subscription) => {
+  const handleRenewSubscription = async (subscription: Subscription) => {
     if (
       confirm(
         `Marquer "${subscription.name}" comme renouvelé et calculer la prochaine date de renouvellement ?`
       )
     ) {
-      setSubscriptions(renewSubscription(subscription.id, 'Renouvelé manuellement'));
+      try {
+        const updated = await renewSubscription(subscription.id, 'Renouvelé manuellement');
+        setSubscriptions(updated);
+      } catch (error) {
+        console.error('Error renewing subscription:', error);
+        alert('Erreur lors du renouvellement de l\'abonnement');
+      }
     }
   };
 
