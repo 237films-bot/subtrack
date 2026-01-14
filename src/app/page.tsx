@@ -1,103 +1,60 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { AISubscription } from '@/lib/types';
+import { Subscription } from '@/lib/types';
 import {
   getSubscriptions,
   addSubscription,
   updateSubscription,
   deleteSubscription,
-  updateCredits,
+  renewSubscription,
+  logout,
 } from '@/lib/store';
-import { SubscriptionCard } from '@/components/subscription-card';
+import { AuthGuard } from '@/components/auth-guard';
 import { SubscriptionForm } from '@/components/subscription-form';
-import { UpdateCreditsDialog } from '@/components/update-credits-dialog';
-import { StatsOverview } from '@/components/stats-overview';
+import { RenewalsTable } from '@/components/renewals-table';
+import { TimelineView } from '@/components/timeline-view';
+import { CostOverview } from '@/components/cost-overview';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Card } from '@/components/ui/card';
 import {
   Plus,
-  Search,
-  Zap,
   Moon,
   Sun,
-  SortAsc,
-  LayoutGrid,
-  List,
+  Calendar,
+  Table,
+  DollarSign,
+  Clock,
+  LogOut,
 } from 'lucide-react';
 
-type SortOption = 'name' | 'credits-remaining' | 'reset-date' | 'usage';
-type ViewMode = 'grid' | 'list';
+type ViewMode = 'timeline' | 'table' | 'costs';
 
 export default function Home() {
-  const [subscriptions, setSubscriptions] = useState<AISubscription[]>([]);
-  const [filteredSubscriptions, setFilteredSubscriptions] = useState<AISubscription[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<SortOption>('reset-date');
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [viewMode, setViewMode] = useState<ViewMode>('timeline');
   const [darkMode, setDarkMode] = useState(false);
-  
+
   // Dialog states
   const [formOpen, setFormOpen] = useState(false);
-  const [editingSubscription, setEditingSubscription] = useState<AISubscription | null>(null);
-  const [updateCreditsOpen, setUpdateCreditsOpen] = useState(false);
-  const [selectedSubscription, setSelectedSubscription] = useState<AISubscription | null>(null);
+  const [editingSubscription, setEditingSubscription] = useState<Subscription | null>(null);
 
   // Load subscriptions
   useEffect(() => {
     setSubscriptions(getSubscriptions());
-    
+
     // Check for dark mode preference
     if (typeof window !== 'undefined') {
-      const isDark = localStorage.getItem('dark-mode') === 'true' ||
-        (!localStorage.getItem('dark-mode') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      const isDark =
+        localStorage.getItem('dark-mode') === 'true' ||
+        (!localStorage.getItem('dark-mode') &&
+          window.matchMedia('(prefers-color-scheme: dark)').matches);
       setDarkMode(isDark);
       if (isDark) {
         document.documentElement.classList.add('dark');
       }
     }
   }, []);
-
-  // Filter and sort subscriptions
-  useEffect(() => {
-    let result = [...subscriptions];
-    
-    // Filter by search
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(s => 
-        s.name.toLowerCase().includes(query) ||
-        s.notes?.toLowerCase().includes(query)
-      );
-    }
-    
-    // Sort
-    result.sort((a, b) => {
-      switch (sortBy) {
-        case 'name':
-          return a.name.localeCompare(b.name);
-        case 'credits-remaining':
-          return (b.totalCredits - b.usedCredits) - (a.totalCredits - a.usedCredits);
-        case 'usage':
-          const aPercent = a.usedCredits / a.totalCredits;
-          const bPercent = b.usedCredits / b.totalCredits;
-          return bPercent - aPercent;
-        case 'reset-date':
-        default:
-          // This requires the store function, we'll sort by reset day for simplicity
-          return a.resetDay - b.resetDay;
-      }
-    });
-    
-    setFilteredSubscriptions(result);
-  }, [subscriptions, searchQuery, sortBy]);
 
   // Toggle dark mode
   const toggleDarkMode = () => {
@@ -106,18 +63,26 @@ export default function Home() {
     document.documentElement.classList.toggle('dark');
   };
 
+  // Handle logout
+  const handleLogout = () => {
+    if (confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
+      logout();
+      window.location.reload();
+    }
+  };
+
   // Handlers
   const handleAddSubscription = () => {
     setEditingSubscription(null);
     setFormOpen(true);
   };
 
-  const handleEditSubscription = (subscription: AISubscription) => {
+  const handleEditSubscription = (subscription: Subscription) => {
     setEditingSubscription(subscription);
     setFormOpen(true);
   };
 
-  const handleSaveSubscription = (subscription: AISubscription) => {
+  const handleSaveSubscription = (subscription: Subscription) => {
     if (editingSubscription) {
       setSubscriptions(updateSubscription(subscription.id, subscription));
     } else {
@@ -126,52 +91,56 @@ export default function Home() {
   };
 
   const handleDeleteSubscription = (id: string) => {
-    if (confirm('Êtes-vous sûr de vouloir supprimer cette subscription ?')) {
+    if (confirm('Êtes-vous sûr de vouloir supprimer cet abonnement ?')) {
       setSubscriptions(deleteSubscription(id));
     }
   };
 
-  const handleOpenUpdateCredits = (id: string) => {
-    const subscription = subscriptions.find(s => s.id === id);
-    if (subscription) {
-      setSelectedSubscription(subscription);
-      setUpdateCreditsOpen(true);
+  const handleRenewSubscription = (subscription: Subscription) => {
+    if (
+      confirm(
+        `Marquer "${subscription.name}" comme renouvelé et calculer la prochaine date de renouvellement ?`
+      )
+    ) {
+      setSubscriptions(renewSubscription(subscription.id, 'Renouvelé manuellement'));
     }
   };
 
-  const handleUpdateCredits = (usedCredits: number, note?: string) => {
-    if (selectedSubscription) {
-      setSubscriptions(updateCredits(selectedSubscription.id, usedCredits, note));
-    }
-  };
+  const tabs = [
+    { id: 'timeline', label: 'Chronologie', icon: Clock },
+    { id: 'table', label: 'Tableau', icon: Table },
+    { id: 'costs', label: 'Coûts', icon: DollarSign },
+  ] as const;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-muted/30">
+    <AuthGuard>
+      <div className="min-h-screen bg-gradient-to-br from-background to-muted/30">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl">
-                <Zap className="size-6 text-white" />
+                <Calendar className="size-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold">AI Credits Tracker</h1>
-                <p className="text-xs text-muted-foreground">Gérez vos crédits IA</p>
+                <h1 className="text-xl font-bold">Gestionnaire d'Abonnements</h1>
+                <p className="text-xs text-muted-foreground">
+                  Suivez vos renouvellements et dépenses
+                </p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={toggleDarkMode}
-              >
+              <Button variant="ghost" size="icon" onClick={toggleDarkMode}>
                 {darkMode ? <Sun className="size-5" /> : <Moon className="size-5" />}
               </Button>
               <Button onClick={handleAddSubscription}>
                 <Plus className="size-4 mr-2" />
                 Ajouter
+              </Button>
+              <Button variant="ghost" size="icon" onClick={handleLogout} title="Déconnexion">
+                <LogOut className="size-5" />
               </Button>
             </div>
           </div>
@@ -179,109 +148,65 @@ export default function Home() {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* Stats Overview */}
-        <StatsOverview subscriptions={subscriptions} />
+        {/* Navigation Tabs */}
+        <Card className="p-1">
+          <div className="flex gap-1">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <Button
+                  key={tab.id}
+                  variant={viewMode === tab.id ? 'secondary' : 'ghost'}
+                  className="flex-1"
+                  onClick={() => setViewMode(tab.id as ViewMode)}
+                >
+                  <Icon className="size-4 mr-2" />
+                  {tab.label}
+                </Button>
+              );
+            })}
+          </div>
+        </Card>
 
-        {/* Filters & Search */}
-        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <Input
-              placeholder="Rechercher..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-              <SelectTrigger className="w-full sm:w-48">
-                <SortAsc className="size-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="reset-date">Date de reset</SelectItem>
-                <SelectItem value="name">Nom</SelectItem>
-                <SelectItem value="credits-remaining">Crédits restants</SelectItem>
-                <SelectItem value="usage">Utilisation %</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            <div className="flex border rounded-lg">
-              <Button
-                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-                size="icon"
-                onClick={() => setViewMode('grid')}
-              >
-                <LayoutGrid className="size-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                size="icon"
-                onClick={() => setViewMode('list')}
-              >
-                <List className="size-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Subscriptions Grid/List */}
-        {filteredSubscriptions.length > 0 ? (
-          <div className={
-            viewMode === 'grid'
-              ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
-              : 'flex flex-col gap-4'
-          }>
-            {filteredSubscriptions.map((subscription) => (
-              <SubscriptionCard
-                key={subscription.id}
-                subscription={subscription}
-                onEdit={handleEditSubscription}
-                onDelete={handleDeleteSubscription}
-                onUpdateCredits={handleOpenUpdateCredits}
-              />
-            ))}
-          </div>
-        ) : (
+        {/* Content */}
+        {subscriptions.length === 0 ? (
           <div className="text-center py-16">
             <div className="inline-flex p-4 bg-muted rounded-full mb-4">
-              <Zap className="size-8 text-muted-foreground" />
+              <Calendar className="size-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">
-              {searchQuery ? 'Aucun résultat' : 'Aucune subscription'}
-            </h3>
+            <h3 className="text-lg font-semibold mb-2">Aucun abonnement</h3>
             <p className="text-muted-foreground mb-4">
-              {searchQuery 
-                ? 'Essayez une autre recherche'
-                : 'Commencez par ajouter vos services IA préférés'
-              }
+              Commencez par ajouter vos abonnements pour suivre vos renouvellements et
+              dépenses
             </p>
-            {!searchQuery && (
-              <Button onClick={handleAddSubscription}>
-                <Plus className="size-4 mr-2" />
-                Ajouter une subscription
-              </Button>
-            )}
+            <Button onClick={handleAddSubscription}>
+              <Plus className="size-4 mr-2" />
+              Ajouter un abonnement
+            </Button>
           </div>
+        ) : (
+          <>
+            {viewMode === 'timeline' && <TimelineView subscriptions={subscriptions} />}
+            {viewMode === 'table' && (
+              <RenewalsTable
+                subscriptions={subscriptions}
+                onEdit={handleEditSubscription}
+                onRenew={handleRenewSubscription}
+              />
+            )}
+            {viewMode === 'costs' && <CostOverview subscriptions={subscriptions} />}
+          </>
         )}
       </main>
 
-      {/* Dialogs */}
+      {/* Form Dialog */}
       <SubscriptionForm
         open={formOpen}
         onClose={() => setFormOpen(false)}
         onSave={handleSaveSubscription}
         subscription={editingSubscription}
       />
-      
-      <UpdateCreditsDialog
-        open={updateCreditsOpen}
-        onClose={() => setUpdateCreditsOpen(false)}
-        onUpdate={handleUpdateCredits}
-        subscription={selectedSubscription}
-      />
-    </div>
+      </div>
+    </AuthGuard>
   );
 }
