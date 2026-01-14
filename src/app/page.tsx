@@ -8,7 +8,9 @@ import {
   updateSubscription,
   deleteSubscription,
   renewSubscription,
+  logout,
 } from '@/lib/store';
+import { AuthGuard } from '@/components/auth-guard';
 import { SubscriptionForm } from '@/components/subscription-form';
 import { RenewalsTable } from '@/components/renewals-table';
 import { TimelineView } from '@/components/timeline-view';
@@ -23,6 +25,7 @@ import {
   Table,
   DollarSign,
   Clock,
+  LogOut,
 } from 'lucide-react';
 
 type ViewMode = 'timeline' | 'table' | 'costs';
@@ -58,6 +61,14 @@ export default function Home() {
     setDarkMode(!darkMode);
     localStorage.setItem('dark-mode', (!darkMode).toString());
     document.documentElement.classList.toggle('dark');
+  };
+
+  // Handle logout
+  const handleLogout = () => {
+    if (confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
+      logout();
+      window.location.reload();
+    }
   };
 
   // Handlers
@@ -102,7 +113,8 @@ export default function Home() {
   ] as const;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-muted/30">
+    <AuthGuard>
+      <div className="min-h-screen bg-gradient-to-br from-background to-muted/30">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b">
         <div className="container mx-auto px-4 py-4">
@@ -126,6 +138,9 @@ export default function Home() {
               <Button onClick={handleAddSubscription}>
                 <Plus className="size-4 mr-2" />
                 Ajouter
+              </Button>
+              <Button variant="ghost" size="icon" onClick={handleLogout} title="Déconnexion">
+                <LogOut className="size-5" />
               </Button>
             </div>
           </div>
@@ -191,6 +206,7 @@ export default function Home() {
         onSave={handleSaveSubscription}
         subscription={editingSubscription}
       />
-    </div>
+      </div>
+    </AuthGuard>
   );
 }

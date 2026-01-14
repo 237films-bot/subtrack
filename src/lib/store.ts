@@ -4,6 +4,21 @@ import { Subscription, RenewalHistory } from './types';
 
 const STORAGE_KEY = 'subscriptions';
 const HISTORY_KEY = 'renewal-history';
+const AUTH_KEY = 'auth-session';
+const PASSPHRASE_KEY = 'app-passphrase';
+const RATE_LIMIT_KEY = 'auth-rate-limit';
+
+// Auth types
+interface AuthSession {
+  authenticated: boolean;
+  timestamp: number;
+}
+
+interface RateLimitData {
+  attempts: number;
+  lastAttempt: number;
+  blockedUntil?: number;
+}
 
 export function getSubscriptions(): Subscription[] {
   if (typeof window === 'undefined') return [];
@@ -190,4 +205,152 @@ export function getUpcomingRenewals(subscriptions: Subscription[], days: number 
       const daysB = getDaysUntilRenewal(b);
       return daysA - daysB;
     });
+}
+
+// Authentication functions
+const MAX_ATTEMPTS = 5;
+const BLOCK_DURATION = 15 * 60 * 1000; // 15 minutes
+const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+
+// Hash function for passphrase (simple hash for demo - in production use bcrypt or similar)
+function hashPassphrase(passphrase: string): string {
+  let hash = 0;
+  for (let i = 0; i < passphrase.length; i++) {
+    const char = passphrase.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return hash.toString(16);
+}
+
+export function initializePassphrase(passphrase: string): void {
+  if (typeof window === 'undefined') return;
+  const hashed = hashPassphrase(passphrase);
+  localStorage.setItem(PASSPHRASE_KEY, hashed);
+}
+
+export function isPassphraseSet(): boolean {
+  if (typeof window === 'undefined') return false;
+  return !!localStorage.getItem(PASSPHRASE_KEY);
+}
+
+function getRateLimitData(): RateLimitData {
+  if (typeof window === 'undefined') return { attempts: 0, lastAttempt: 0 };
+  const data = localStorage.getItem(RATE_LIMIT_KEY);
+  return data ? JSON.parse(data) : { attempts: 0, lastAttempt: 0 };
+}
+
+function saveRateLimitData(data: RateLimitData): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(RATE_LIMIT_KEY, JSON.stringify(data));
+}
+
+export function isBlocked(): { blocked: boolean; remainingTime?: number } {
+  const rateLimitData = getRateLimitData();
+
+  if (rateLimitData.blockedUntil) {
+    const now = Date.now();
+    if (now < rateLimitData.blockedUntil) {
+      return {
+        blocked: true,
+        remainingTime: Math.ceil((rateLimitData.blockedUntil - now) / 1000)
+      };
+    } else {
+      // Block expired, reset attempts
+      saveRateLimitData({ attempts: 0, lastAttempt: 0 });
+      return { blocked: false };
+    }
+  }
+
+  return { blocked: false };
+}
+
+export function verifyPassphrase(passphrase: string): { success: boolean; error?: string; remainingAttempts?: number } {
+  if (typeof window === 'undefined') return { success: false, error: 'Environment not available' };
+
+  // Check if blocked
+  const blockStatus = isBlocked();
+  if (blockStatus.blocked) {
+    const minutes = Math.ceil((blockStatus.remainingTime || 0) / 60);
+    return {
+      success: false,
+      error: `Trop de tentatives. Veuillez réessayer dans ${minutes} minute${minutes > 1 ? 's' : ''}.`
+    };
+  }
+
+  const storedHash = localStorage.getItem(PASSPHRASE_KEY);
+  if (!storedHash) {
+    return { success: false, error: 'Passphrase not configured' };
+  }
+
+  const inputHash = hashPassphrase(passphrase);
+  const rateLimitData = getRateLimitData();
+
+  if (inputHash === storedHash) {
+    // Success - reset rate limit and create session
+    saveRateLimitData({ attempts: 0, lastAttempt: 0 });
+    const session: AuthSession = {
+      authenticated: true,
+      timestamp: Date.now()
+    };
+    localStorage.setItem(AUTH_KEY, JSON.stringify(session));
+    return { success: true };
+  } else {
+    // Failed attempt
+    const newAttempts = rateLimitData.attempts + 1;
+    const newData: RateLimitData = {
+      attempts: newAttempts,
+      lastAttempt: Date.now()
+    };
+
+    if (newAttempts >= MAX_ATTEMPTS) {
+      newData.blockedUntil = Date.now() + BLOCK_DURATION;
+      saveRateLimitData(newData);
+      return {
+        success: false,
+        error: `Trop de tentatives échouées. Accès bloqué pendant 15 minutes.`
+      };
+    }
+
+    saveRateLimitData(newData);
+    const remaining = MAX_ATTEMPTS - newAttempts;
+    return {
+      success: false,
+      error: 'Passphrase incorrecte',
+      remainingAttempts: remaining
+    };
+  }
+}
+
+export function isAuthenticated(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  const sessionData = localStorage.getItem(AUTH_KEY);
+  if (!sessionData) return false;
+
+  try {
+    const session: AuthSession = JSON.parse(sessionData);
+    const now = Date.now();
+
+    // Check if session is still valid
+    if (session.authenticated && (now - session.timestamp) < SESSION_DURATION) {
+      return true;
+    }
+
+    // Session expired
+    localStorage.removeItem(AUTH_KEY);
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+export function logout(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(AUTH_KEY);
+}
+
+export function getRemainingAttempts(): number {
+  const rateLimitData = getRateLimitData();
+  return Math.max(0, MAX_ATTEMPTS - rateLimitData.attempts);
 }
